@@ -143,7 +143,7 @@ func (lbf *LruBloomFilter) initPersisterTick() {
 			lbf.mutex.Lock()
 			defer lbf.mutex.Unlock()
 
-			for key := range lbf.cache.Keys() {
+			for _, key := range lbf.cache.Keys() {
 				strKey := string(key)
 				_, loaded := lbf.keyUseStatus.LoadOrStore(strKey, 1)
 				if !loaded {
