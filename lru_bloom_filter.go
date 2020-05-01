@@ -3,9 +3,9 @@ package lru_bloom_filter
 import (
 	"bytes"
 	"github.com/hashicorp/golang-lru"
+	"github.com/jianzhiyao/lru_bloom_filter/lib"
 	"github.com/willf/bloom"
 	"log"
-	"lru_bloom_filter/lib"
 	"sync"
 	"time"
 )
