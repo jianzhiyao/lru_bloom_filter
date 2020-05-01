@@ -48,13 +48,17 @@ func (lbf *LruBloomFilter) checkCacheExist(key string) {
 	if !lbf.cache.Contains(keyHash) {
 		ch := make(chan []byte)
 		go lbf.onCacheMiss(key, ch)
-		lbf.cache.Add(keyHash, <-ch)
+
+		result := <-ch
+		if len(result) > 0{
+			lbf.cache.Add(keyHash, result)
+		}
 	}
 }
 
 func (lbf *LruBloomFilter) putWithoutLock(key string, b []byte) {
 	keyHash := lbf.keyHash(key)
-	var cacheBytes *bytes.Buffer
+	cacheBytes := bytes.NewBuffer([]byte{0})
 	if cacheResult, ok := lbf.cache.Get(keyHash); ok {
 		cacheBytes = bytes.NewBuffer(cacheResult.([]byte))
 	}
@@ -71,9 +75,11 @@ func (lbf *LruBloomFilter) putWithoutLock(key string, b []byte) {
 	if _, err = bloomFilter.WriteTo(cacheBytes); err != nil {
 		log.Fatal(err)
 	}
-	lbf.cache.Add(keyHash, cacheBytes.Bytes())
+	if len(cacheBytes.Bytes()) > 0 {
+		lbf.cache.Add(keyHash, cacheBytes.Bytes())
+		lbf.keyUseStatus.Store(keyHash, 1)
+	}
 	//sign that key is updated
-	lbf.keyUseStatus.Store(keyHash, 1)
 	bloomFilter.ClearAll()
 	bloomFilter = nil
 }
@@ -146,7 +152,7 @@ func (lbf *LruBloomFilter) initPersisterTick() {
 			for _, key := range lbf.cache.Keys() {
 				strKey := key
 				_, loaded := lbf.keyUseStatus.LoadOrStore(strKey, 1)
-				if !loaded {
+				if loaded {
 					if value, ok := lbf.cache.Get(key); ok {
 						go lbf.persister(key, value)
 					}

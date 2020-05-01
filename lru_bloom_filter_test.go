@@ -3,6 +3,7 @@ package lru_bloom_filter
 import (
 	"fmt"
 	"math/rand"
+	"sync"
 	"testing"
 )
 
@@ -100,4 +101,17 @@ func TestLruBloomFilter2_Test(t *testing.T) {
 			go lruBloomFilter.Put("key", []byte(str))
 		}()
 	}
+}
+
+func TestLruBloomFilter_UseStatus(t *testing.T) {
+	var a sync.Map
+	_,loaded :=a.LoadOrStore(1,1)
+	fmt.Println("kkk",loaded)
+	_,loaded =a.LoadOrStore(1,1)
+	fmt.Println("kkk",loaded)
+	_,loaded =a.LoadOrStore(2,1)
+	fmt.Println("kkk",loaded)
+
+
+
 }
