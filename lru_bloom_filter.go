@@ -57,15 +57,16 @@ func (lbf *LruBloomFilter) putWithoutLock(key string, b []byte) {
 	var cacheBytes *bytes.Buffer
 	if cacheResult, ok := lbf.cache.Get(keyHash); ok {
 		cacheBytes = bytes.NewBuffer(cacheResult.([]byte))
-	} else {
-		cacheBytes = bytes.NewBuffer([]byte{})
 	}
 
 	bloomFilter := bloom.New(lbf.bloomFilterConfig.M, lbf.bloomFilterConfig.K)
 	var err error
-	if _, err = bloomFilter.ReadFrom(cacheBytes); err != nil {
-		log.Fatal(err)
+	if cacheBytes.Cap() > 0 {
+		if _, err = bloomFilter.ReadFrom(cacheBytes); err != nil {
+			log.Fatal(err)
+		}
 	}
+
 	bloomFilter.TestAndAdd(b)
 	if _, err = bloomFilter.WriteTo(cacheBytes); err != nil {
 		log.Fatal(err)
