@@ -5,7 +5,6 @@ import (
 	"github.com/hashicorp/golang-lru"
 	"github.com/jianzhiyao/lru_bloom_filter/lib"
 	"github.com/willf/bloom"
-	"log"
 	"sync"
 	"time"
 )
@@ -50,33 +49,33 @@ func (lbf *LruBloomFilter) checkCacheExist(key string) {
 		go lbf.onCacheMiss(key, ch)
 
 		result := <-ch
-		if len(result) > 0{
-			lbf.cache.Add(keyHash, result)
+		if len(result) > 0 {
+			lbf.cache.Add(keyHash, string(result))
 		}
 	}
 }
 
 func (lbf *LruBloomFilter) putWithoutLock(key string, b []byte) {
 	keyHash := lbf.keyHash(key)
-	cacheBytes := bytes.NewBuffer([]byte{0})
+	cacheBytes := bytes.NewBuffer([]byte{})
 	if cacheResult, ok := lbf.cache.Get(keyHash); ok {
-		cacheBytes = bytes.NewBuffer(cacheResult.([]byte))
+		cacheBytes = bytes.NewBufferString(cacheResult.(string))
 	}
 
 	bloomFilter := bloom.New(lbf.bloomFilterConfig.M, lbf.bloomFilterConfig.K)
 	var err error
 	if cacheBytes.Cap() > 0 {
 		if _, err = bloomFilter.ReadFrom(cacheBytes); err != nil {
-			log.Fatal(err)
+			panic(err)
 		}
 	}
 
 	bloomFilter.TestAndAdd(b)
 	if _, err = bloomFilter.WriteTo(cacheBytes); err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
-	if len(cacheBytes.Bytes()) > 0 {
-		lbf.cache.Add(keyHash, cacheBytes.Bytes())
+	if cacheBytes.Cap() > 0 {
+		lbf.cache.Add(keyHash, cacheBytes.String())
 		lbf.keyUseStatus.Store(keyHash, 1)
 	}
 	//sign that key is updated
@@ -106,14 +105,13 @@ func (lbf *LruBloomFilter) testWithoutLock(key string, b []byte) bool {
 	} else {
 		var bb *bytes.Buffer
 		if cacheResult, ok := lbf.cache.Get(keyHash); ok {
-			bb = bytes.NewBuffer(cacheResult.([]byte))
+			bb = bytes.NewBufferString(cacheResult.(string))
 		} else {
 			bb = bytes.NewBuffer([]byte{})
 		}
 		bloomFilter := bloom.New(lbf.bloomFilterConfig.M, lbf.bloomFilterConfig.K)
 		if _, err := bloomFilter.ReadFrom(bb); err != nil {
-			log.Fatal(err)
-			return false
+			panic(err)
 		}
 
 		return bloomFilter.Test(b)
@@ -151,13 +149,13 @@ func (lbf *LruBloomFilter) initPersisterTick() {
 
 			for _, key := range lbf.cache.Keys() {
 				strKey := key
-				_, loaded := lbf.keyUseStatus.LoadOrStore(strKey, 1)
-				if loaded {
+				status, ok := lbf.keyUseStatus.Load(strKey)
+				if ok && status == 1 {
 					if value, ok := lbf.cache.Get(key); ok {
 						go lbf.persister(key, value)
 					}
 				}
-				lbf.keyUseStatus.Delete(strKey)
+				lbf.keyUseStatus.Store(strKey, 0)
 			}
 
 			return !lbf.isClose
@@ -171,8 +169,8 @@ func (lbf *LruBloomFilter) onEvict(key interface{}, value interface{}) {
 
 	if lbf.persister != nil {
 		//sign that key is evicted
-		lbf.keyUseStatus.Delete(keyHash)
 		go lbf.persister(k, value)
+		lbf.keyUseStatus.Delete(keyHash)
 	}
 }
 
