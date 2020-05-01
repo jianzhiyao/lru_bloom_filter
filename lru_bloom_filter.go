@@ -5,27 +5,38 @@ import (
 	"github.com/hashicorp/golang-lru"
 	"github.com/willf/bloom"
 	"log"
+	"lru_bloom_filter/lib"
 	"sync"
+	"time"
 )
 
 type LruBloomFilter struct {
 	cache             *lru.Cache
-	onCacheMiss       func(key string, c chan<- []byte)
+	onCacheMiss       func(k string, c chan<- []byte)
 	mutex             sync.Mutex
 	bloomFilterConfig *BloomFilterConfig
+
+	persister         func(k interface{}, v interface{})
+	persistCheckEvery time.Duration
+
+	keyUseStatus sync.Map
+
+	//close tag
+	isClose bool
+}
+type LruBloomFilterConfig struct {
+	LruCacheSize      int
+	BloomFilterConfig BloomFilterConfig
+	OnCacheMiss       func(key string, c chan<- []byte)
+	Persister         func(key interface{}, value interface{})
+	PersistCheckEvery time.Duration
 }
 type BloomFilterConfig struct {
-	m uint
-	k uint
+	M uint
+	K uint
 }
 
 func (lbf *LruBloomFilter) keyHash(key string) string {
-	//h := sha1.New()
-	//	//h.Write([]byte(key))
-	//	//bs := h.Sum(nil)
-	//	//h.Reset()
-	//	//
-	//	//return fmt.Sprintf("%x", bs)
 	return key
 }
 
@@ -50,7 +61,7 @@ func (lbf *LruBloomFilter) putWithoutLock(key string, b []byte) {
 		cacheBytes = bytes.NewBuffer([]byte{})
 	}
 
-	bloomFilter := bloom.New(lbf.bloomFilterConfig.m, lbf.bloomFilterConfig.k)
+	bloomFilter := bloom.New(lbf.bloomFilterConfig.M, lbf.bloomFilterConfig.K)
 	var err error
 	if _, err = bloomFilter.ReadFrom(cacheBytes); err != nil {
 		log.Fatal(err)
@@ -60,6 +71,8 @@ func (lbf *LruBloomFilter) putWithoutLock(key string, b []byte) {
 		log.Fatal(err)
 	}
 	lbf.cache.Add(keyHash, cacheBytes.Bytes())
+	//sign that key is updated
+	lbf.keyUseStatus.Store(keyHash, 1)
 	bloomFilter.ClearAll()
 	bloomFilter = nil
 }
@@ -90,7 +103,7 @@ func (lbf *LruBloomFilter) testWithoutLock(key string, b []byte) bool {
 		} else {
 			bb = bytes.NewBuffer([]byte{})
 		}
-		bloomFilter := bloom.New(lbf.bloomFilterConfig.m, lbf.bloomFilterConfig.k)
+		bloomFilter := bloom.New(lbf.bloomFilterConfig.M, lbf.bloomFilterConfig.K)
 		if _, err := bloomFilter.ReadFrom(bb); err != nil {
 			log.Fatal(err)
 			return false
@@ -115,17 +128,58 @@ func (lbf *LruBloomFilter) TestAndPut(key string, b []byte) bool {
 
 }
 
-func (lbf *LruBloomFilter) Close(){
+func (lbf *LruBloomFilter) Close() {
 	lbf.cache.Purge()
 	lbf.cache = nil
 	lbf.bloomFilterConfig = nil
+	lbf.isClose = true
 }
 
-func New(lruCacheSize int, c BloomFilterConfig, onCacheMiss func(key string, c chan<- []byte), onEvict func(key interface{}, value interface{})) LruBloomFilter {
-	lruCache, _ := lru.NewWithEvict(lruCacheSize, onEvict)
-	return LruBloomFilter{
-		cache:             lruCache,
-		onCacheMiss:       onCacheMiss,
-		bloomFilterConfig: &c,
+func (lbf *LruBloomFilter) initPersisterTick() {
+	if lbf.persister != nil && lbf.persistCheckEvery > 0 {
+		go lib.Every(lbf.persistCheckEvery, func(t time.Time) bool {
+
+			lbf.mutex.Lock()
+			defer lbf.mutex.Unlock()
+
+			for key := range lbf.cache.Keys() {
+				strKey := string(key)
+				_, loaded := lbf.keyUseStatus.LoadOrStore(strKey, 1)
+				if !loaded {
+					if value, ok := lbf.cache.Get(key); ok {
+						go lbf.persister(key, value)
+					}
+				}
+				lbf.keyUseStatus.Delete(strKey)
+			}
+
+			return !lbf.isClose
+		})
 	}
+}
+
+func (lbf *LruBloomFilter) onEvict(key interface{}, value interface{}) {
+	k := key.(string)
+	keyHash := lbf.keyHash(k)
+
+	if lbf.persister != nil {
+		//sign that key is evicted
+		lbf.keyUseStatus.Delete(keyHash)
+		go lbf.persister(k, value)
+	}
+}
+
+func New(config LruBloomFilterConfig) LruBloomFilter {
+	lbf := LruBloomFilter{
+		onCacheMiss:       config.OnCacheMiss,
+		bloomFilterConfig: &config.BloomFilterConfig,
+		persister:         config.Persister,
+		isClose:           false,
+		persistCheckEvery: config.PersistCheckEvery,
+	}
+
+	lruCache, _ := lru.NewWithEvict(config.LruCacheSize, lbf.onEvict)
+	lbf.cache = lruCache
+	lbf.initPersisterTick()
+	return lbf
 }

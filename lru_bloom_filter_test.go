@@ -7,17 +7,18 @@ import (
 )
 
 func TestLruBloomFilter1_Put(t *testing.T) {
-	lruBloomFilter := New(
-		10,
-		BloomFilterConfig{k: 5, m: uint(1024) * 1024},
-		func(key string, c chan<- []byte) {
+	lruBloomFilter := New(LruBloomFilterConfig{
+		LruCacheSize:      10,
+		BloomFilterConfig: BloomFilterConfig{K: 5, M: uint(1024) * 1024},
+		OnCacheMiss: func(key string, c chan<- []byte) {
 			//todo set cache by persistent data
 			c <- []byte{}
 			close(c)
 		},
-		func(key interface{}, value interface{}) {
+		Persister: func(key interface{}, value interface{}) {
 			//todo persistent data after cache retirement
-		})
+		},
+	})
 	defer lruBloomFilter.Close()
 
 	for i := 1; i <= 1000; i++ {
@@ -27,18 +28,18 @@ func TestLruBloomFilter1_Put(t *testing.T) {
 }
 
 func TestLruBloomFilter2_Put(t *testing.T) {
-	lruBloomFilter := New(
-		10,
-		BloomFilterConfig{k: 5, m: uint(1024) * 1024},
-		func(key string, c chan<- []byte) {
+	lruBloomFilter := New(LruBloomFilterConfig{
+		LruCacheSize:      10,
+		BloomFilterConfig: BloomFilterConfig{K: 5, M: uint(1024) * 1024},
+		OnCacheMiss: func(key string, c chan<- []byte) {
 			//todo set cache by persistent data
 			c <- []byte{}
 			close(c)
 		},
-		func(key interface{}, value interface{}) {
+		Persister: func(key interface{}, value interface{}) {
 			//todo persistent data after cache retirement
-		})
-	defer lruBloomFilter.Close()
+		},
+	})
 
 	for i := 1; i <= 1000; i++ {
 		key := fmt.Sprintf("%d", rand.Intn(9))
@@ -47,17 +48,18 @@ func TestLruBloomFilter2_Put(t *testing.T) {
 }
 
 func TestLruBloomFilter1_Test(t *testing.T) {
-	lruBloomFilter := New(
-		100,
-		BloomFilterConfig{k: 5, m: uint(1024) * 1024},
-		func(key string, c chan<- []byte) {
+	lruBloomFilter := New(LruBloomFilterConfig{
+		LruCacheSize:      100,
+		BloomFilterConfig: BloomFilterConfig{K: 5, M: uint(1024) * 1024},
+		OnCacheMiss: func(key string, c chan<- []byte) {
 			//todo set cache by persistent data
 			c <- []byte{}
 			close(c)
 		},
-		func(key interface{}, value interface{}) {
+		Persister: func(key interface{}, value interface{}) {
 			//todo persistent data after cache retirement
-		})
+		},
+	})
 
 	var key string
 	for i := 1; i <= 100; i++ {
@@ -75,17 +77,18 @@ func TestLruBloomFilter1_Test(t *testing.T) {
 }
 
 func TestLruBloomFilter2_Test(t *testing.T) {
-	lruBloomFilter := New(
-		1,
-		BloomFilterConfig{k: 5, m: uint(1024) * 1024},
-		func(key string, c chan<- []byte) {
+	lruBloomFilter := New(LruBloomFilterConfig{
+		LruCacheSize:      1,
+		BloomFilterConfig: BloomFilterConfig{K: 5, M: uint(1024) * 1024},
+		OnCacheMiss: func(key string, c chan<- []byte) {
 			//todo set cache by persistent data
 			c <- []byte{}
 			close(c)
 		},
-		func(key interface{}, value interface{}) {
+		Persister: func(key interface{}, value interface{}) {
 			//todo persistent data after cache retirement
-		})
+		},
+	})
 
 	var str string
 	for i := 1; i <= 100000; i++ {
