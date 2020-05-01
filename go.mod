@@ -1,4 +1,4 @@
-module lru_bloom_filter
+module github.com/jianzhiyao/lru_bloom_filter
 
 go 1.13
 
