@@ -18,7 +18,7 @@ type LruBloomFilter struct {
 	persister         func(k interface{}, v interface{})
 	persistCheckEvery time.Duration
 
-	keyUseStatus sync.Map
+	keyUseStatus map[string]byte
 
 	//close tag
 	isClose bool
@@ -76,7 +76,7 @@ func (lbf *LruBloomFilter) putWithoutLock(key string, b []byte) {
 	}
 	if cacheBytes.Cap() > 0 {
 		lbf.cache.Add(keyHash, cacheBytes.String())
-		lbf.keyUseStatus.Store(keyHash, 1)
+		lbf.keyUseStatus[keyHash] = byte(1)
 	}
 	//sign that key is updated
 	bloomFilter.ClearAll()
@@ -136,6 +136,7 @@ func (lbf *LruBloomFilter) TestAndPut(key string, b []byte) bool {
 func (lbf *LruBloomFilter) Close() {
 	lbf.cache.Purge()
 	lbf.cache = nil
+	lbf.keyUseStatus = nil
 	lbf.bloomFilterConfig = nil
 	lbf.isClose = true
 }
@@ -148,14 +149,14 @@ func (lbf *LruBloomFilter) initPersisterTick() {
 			defer lbf.mutex.Unlock()
 
 			for _, key := range lbf.cache.Keys() {
-				strKey := key
-				status, ok := lbf.keyUseStatus.Load(strKey)
-				if ok && status == 1 {
+				strKey := key.(string)
+				_, ok := lbf.keyUseStatus[strKey]
+				if ok {
 					if value, ok := lbf.cache.Get(key); ok {
 						go lbf.persister(key, value)
 					}
 				}
-				lbf.keyUseStatus.Store(strKey, 0)
+				delete(lbf.keyUseStatus, strKey)
 			}
 
 			return !lbf.isClose
@@ -164,13 +165,16 @@ func (lbf *LruBloomFilter) initPersisterTick() {
 }
 
 func (lbf *LruBloomFilter) onEvict(key interface{}, value interface{}) {
+	lbf.mutex.Lock()
+	defer lbf.mutex.Unlock()
+
 	k := key.(string)
 	keyHash := lbf.keyHash(k)
 
 	if lbf.persister != nil {
 		//sign that key is evicted
 		go lbf.persister(k, value)
-		lbf.keyUseStatus.Delete(keyHash)
+		delete(lbf.keyUseStatus, keyHash)
 	}
 }
 
@@ -181,6 +185,7 @@ func New(config LruBloomFilterConfig) LruBloomFilter {
 		persister:         config.Persister,
 		isClose:           false,
 		persistCheckEvery: config.PersistCheckEvery,
+		keyUseStatus:      make(map[string]byte),
 	}
 
 	lruCache, _ := lru.NewWithEvict(config.LruCacheSize, lbf.onEvict)
