@@ -59,9 +59,12 @@ func (lbf *LruBloomFilter) checkCacheExist(key string) {
 
 func (lbf *LruBloomFilter) putWithoutLock(key string, b []byte) {
 	keyHash := lbf.keyHash(key)
-	cacheBytes := bytes.NewBuffer([]byte{})
+
+	var cacheBytes *bytes.Buffer
 	if cacheResult, ok := lbf.cache.Get(keyHash); ok {
 		cacheBytes = bytes.NewBufferString(cacheResult.(string))
+	} else {
+		cacheBytes = bytes.NewBuffer([]byte{})
 	}
 
 	bloomFilter := bloom.New(lbf.bloomFilterConfig.M, lbf.bloomFilterConfig.K)
@@ -86,6 +89,7 @@ func (lbf *LruBloomFilter) putWithoutLock(key string, b []byte) {
 }
 
 func (lbf *LruBloomFilter) Put(key string, b []byte) {
+	//检查key存在
 	lbf.checkCacheExist(key)
 
 	lbf.mutex.Lock()
@@ -95,6 +99,9 @@ func (lbf *LruBloomFilter) Put(key string, b []byte) {
 }
 
 func (lbf *LruBloomFilter) Test(key string, b []byte) bool {
+	//检查key存在
+	lbf.checkCacheExist(key)
+
 	lbf.mutex.Lock()
 	defer lbf.mutex.Unlock()
 	return lbf.testWithoutLock(key, b)
@@ -121,6 +128,7 @@ func (lbf *LruBloomFilter) testWithoutLock(key string, b []byte) bool {
 }
 
 func (lbf *LruBloomFilter) TestAndPut(key string, b []byte) bool {
+	//检查key存在
 	lbf.checkCacheExist(key)
 
 	lbf.mutex.Lock()
@@ -151,14 +159,14 @@ func (lbf *LruBloomFilter) initPersisterTick() {
 			defer lbf.mutex.Unlock()
 
 			for _, key := range lbf.cache.Keys() {
-				strKey := key.(string)
-				_, ok := lbf.keyUseStatus[strKey]
+				keyHash := key.(string)
+				_, ok := lbf.keyUseStatus[keyHash]
 				if ok {
 					if value, ok := lbf.cache.Get(key); ok {
 						go lbf.persister(key, value)
 					}
 				}
-				delete(lbf.keyUseStatus, strKey)
+				delete(lbf.keyUseStatus, keyHash)
 			}
 
 			return !lbf.isClose
