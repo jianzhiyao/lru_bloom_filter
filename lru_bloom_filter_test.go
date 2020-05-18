@@ -70,6 +70,13 @@ func TestLruBloomFilter1_Test(t *testing.T) {
 			t.Errorf("fail")
 		}
 	}
+
+	for i := 2000; i <= 3000; i++ {
+		key = fmt.Sprintf("%d", i)
+		if lruBloomFilter.Test(key, []byte{byte(i)}) {
+			t.Errorf("fail")
+		}
+	}
 }
 
 func TestLruBloomFilter_UseStatus(t *testing.T) {
