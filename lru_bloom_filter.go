@@ -39,10 +39,7 @@ func (lbf *LruBloomFilter) keyHash(key string) string {
 	return key
 }
 
-func (lbf *LruBloomFilter) checkCacheExist(key string) {
-	lbf.mutex.Lock()
-	defer lbf.mutex.Unlock()
-
+func (lbf *LruBloomFilter) checkCacheExistWithoutLock(key string) {
 	keyHash := lbf.keyHash(key)
 	if !lbf.cache.Contains(keyHash) {
 		ch := make(chan []byte)
@@ -89,21 +86,20 @@ func (lbf *LruBloomFilter) putWithoutLock(key string, b []byte) {
 }
 
 func (lbf *LruBloomFilter) Put(key string, b []byte) {
-	//检查key存在
-	lbf.checkCacheExist(key)
-
 	lbf.mutex.Lock()
 	defer lbf.mutex.Unlock()
 
+	//检查key存在 & 初始化相关
+	lbf.checkCacheExistWithoutLock(key)
 	lbf.putWithoutLock(key, b)
 }
 
 func (lbf *LruBloomFilter) Test(key string, b []byte) bool {
-	//检查key存在
-	lbf.checkCacheExist(key)
-
 	lbf.mutex.Lock()
 	defer lbf.mutex.Unlock()
+
+	//检查key存在
+	lbf.checkCacheExistWithoutLock(key)
 	return lbf.testWithoutLock(key, b)
 }
 
@@ -128,11 +124,11 @@ func (lbf *LruBloomFilter) testWithoutLock(key string, b []byte) bool {
 }
 
 func (lbf *LruBloomFilter) TestAndPut(key string, b []byte) bool {
-	//检查key存在
-	lbf.checkCacheExist(key)
-
 	lbf.mutex.Lock()
 	defer lbf.mutex.Unlock()
+
+	//检查key存在
+	lbf.checkCacheExistWithoutLock(key)
 
 	if !lbf.testWithoutLock(key, b) {
 		lbf.putWithoutLock(key, b)
