@@ -55,6 +55,9 @@ func (lbf *LruBloomFilter) checkCacheExistWithoutLock(key string) {
 }
 
 func (lbf *LruBloomFilter) putWithoutLock(key string, b []byte) {
+	//检查key存在
+	lbf.checkCacheExistWithoutLock(key)
+
 	keyHash := lbf.keyHash(key)
 
 	var cacheBytes *bytes.Buffer
@@ -89,8 +92,6 @@ func (lbf *LruBloomFilter) Put(key string, b []byte) {
 	lbf.mutex.Lock()
 	defer lbf.mutex.Unlock()
 
-	//检查key存在 & 初始化相关
-	lbf.checkCacheExistWithoutLock(key)
 	lbf.putWithoutLock(key, b)
 }
 
@@ -98,22 +99,20 @@ func (lbf *LruBloomFilter) Test(key string, b []byte) bool {
 	lbf.mutex.Lock()
 	defer lbf.mutex.Unlock()
 
-	//检查key存在
-	lbf.checkCacheExistWithoutLock(key)
 	return lbf.testWithoutLock(key, b)
 }
 
 func (lbf *LruBloomFilter) testWithoutLock(key string, b []byte) bool {
+	//检查key存在
+	lbf.checkCacheExistWithoutLock(key)
+
 	keyHash := lbf.keyHash(key)
 	if !lbf.cache.Contains(keyHash) {
 		return false
 	} else {
-		var bb *bytes.Buffer
-		if cacheResult, ok := lbf.cache.Get(keyHash); ok {
-			bb = bytes.NewBufferString(cacheResult.(string))
-		} else {
-			bb = bytes.NewBuffer([]byte{})
-		}
+		cacheResult, _ := lbf.cache.Get(keyHash)
+		bb := bytes.NewBufferString(cacheResult.(string))
+
 		bloomFilter := bloom.New(lbf.bloomFilterConfig.M, lbf.bloomFilterConfig.K)
 		if _, err := bloomFilter.ReadFrom(bb); err != nil {
 			panic(err)
@@ -126,9 +125,6 @@ func (lbf *LruBloomFilter) testWithoutLock(key string, b []byte) bool {
 func (lbf *LruBloomFilter) TestAndPut(key string, b []byte) bool {
 	lbf.mutex.Lock()
 	defer lbf.mutex.Unlock()
-
-	//检查key存在
-	lbf.checkCacheExistWithoutLock(key)
 
 	if !lbf.testWithoutLock(key, b) {
 		lbf.putWithoutLock(key, b)
