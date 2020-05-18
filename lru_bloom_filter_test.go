@@ -11,10 +11,9 @@ func TestLruBloomFilter1_Put(t *testing.T) {
 	lruBloomFilter := New(LruBloomFilterConfig{
 		LruCacheSize:      10,
 		BloomFilterConfig: BloomFilterConfig{K: 5, M: uint(1024) * 1024},
-		OnCacheMiss: func(key string, c chan<- []byte) {
+		OnCacheMiss: func(key string, ) []byte {
 			//todo set cache by persistent data
-			c <- []byte{}
-			close(c)
+			return []byte{}
 		},
 		Persister: func(key interface{}, value interface{}) {
 			//todo persistent data after cache retirement
@@ -32,10 +31,9 @@ func TestLruBloomFilter2_Put(t *testing.T) {
 	lruBloomFilter := New(LruBloomFilterConfig{
 		LruCacheSize:      10,
 		BloomFilterConfig: BloomFilterConfig{K: 5, M: uint(1024) * 1024},
-		OnCacheMiss: func(key string, c chan<- []byte) {
+		OnCacheMiss: func(key string, ) []byte {
 			//todo set cache by persistent data
-			c <- []byte{}
-			close(c)
+			return []byte{}
 		},
 		Persister: func(key interface{}, value interface{}) {
 			//todo persistent data after cache retirement
@@ -52,10 +50,9 @@ func TestLruBloomFilter1_Test(t *testing.T) {
 	lruBloomFilter := New(LruBloomFilterConfig{
 		LruCacheSize:      100,
 		BloomFilterConfig: BloomFilterConfig{K: 5, M: uint(1024) * 1024},
-		OnCacheMiss: func(key string, c chan<- []byte) {
+		OnCacheMiss: func(key string, ) []byte {
 			//todo set cache by persistent data
-			c <- []byte{}
-			close(c)
+			return []byte{}
 		},
 		Persister: func(key interface{}, value interface{}) {
 			//todo persistent data after cache retirement

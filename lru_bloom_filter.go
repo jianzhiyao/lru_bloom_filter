@@ -11,7 +11,7 @@ import (
 
 type LruBloomFilter struct {
 	cache             *lru.Cache
-	onCacheMiss       func(k string, c chan<- []byte)
+	onCacheMiss       func(k string) []byte
 	mutex             sync.Mutex
 	bloomFilterConfig *BloomFilterConfig
 
@@ -26,7 +26,7 @@ type LruBloomFilter struct {
 type LruBloomFilterConfig struct {
 	LruCacheSize      int
 	BloomFilterConfig BloomFilterConfig
-	OnCacheMiss       func(key string, c chan<- []byte)
+	OnCacheMiss       func(key string) []byte
 	Persister         func(key interface{}, value interface{})
 	PersistCheckEvery time.Duration
 }
@@ -46,7 +46,9 @@ func (lbf *LruBloomFilter) checkCacheExist(key string) {
 	keyHash := lbf.keyHash(key)
 	if !lbf.cache.Contains(keyHash) {
 		ch := make(chan []byte)
-		go lbf.onCacheMiss(key, ch)
+		go func() {
+			ch <- lbf.onCacheMiss(key)
+		}()
 
 		result := <-ch
 		if len(result) > 0 {
