@@ -75,15 +75,19 @@ func TestLruBloomFilter1_Test(t *testing.T) {
 	}
 }
 
-
-
 func TestLruBloomFilter_UseStatus(t *testing.T) {
 	var a sync.Map
 	_, loaded := a.LoadOrStore(1, 1)
-	fmt.Println("kkk", loaded)
+	if loaded {
+		t.Errorf("fail")
+	}
 	_, loaded = a.LoadOrStore(1, 1)
-	fmt.Println("kkk", loaded)
+	if !loaded {
+		t.Errorf("fail")
+	}
 	_, loaded = a.LoadOrStore(2, 1)
-	fmt.Println("kkk", loaded)
+	if loaded {
+		t.Errorf("fail")
+	}
 
 }
