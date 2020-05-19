@@ -49,7 +49,7 @@ func (lbf *LruBloomFilter) checkCacheExistWithoutLock(key string) {
 
 		result := <-ch
 		if len(result) > 0 {
-			lbf.cache.Add(keyHash, string(result))
+			lbf.cache.Add(keyHash, result)
 		}
 	}
 }
@@ -60,27 +60,18 @@ func (lbf *LruBloomFilter) putWithoutLock(key string, b []byte) {
 
 	keyHash := lbf.keyHash(key)
 
-	var cacheBytes *bytes.Buffer
-	if cacheResult, ok := lbf.cache.Get(keyHash); ok {
-		cacheBytes = bytes.NewBufferString(cacheResult.(string))
-	} else {
-		cacheBytes = bytes.NewBuffer([]byte{})
+	var cacheBytes bytes.Buffer
+	if cacheResult, _ := lbf.cache.Get(keyHash); cacheResult != nil {
+		_, _ = cacheBytes.Read(cacheResult.([]byte))
 	}
 
 	bloomFilter := bloom.New(lbf.bloomFilterConfig.M, lbf.bloomFilterConfig.K)
-	var err error
-	if cacheBytes.Cap() > 0 {
-		if _, err = bloomFilter.ReadFrom(cacheBytes); err != nil {
-			panic(err)
-		}
-	}
+	_, _ = bloomFilter.ReadFrom(&cacheBytes)
 
 	bloomFilter.TestAndAdd(b)
-	if _, err = bloomFilter.WriteTo(cacheBytes); err != nil {
-		panic(err)
-	}
+	_, _ = bloomFilter.WriteTo(&cacheBytes)
 	if cacheBytes.Cap() > 0 {
-		lbf.cache.Add(keyHash, cacheBytes.String())
+		lbf.cache.Add(keyHash, cacheBytes.Bytes())
 		lbf.keyUseStatus[keyHash] = byte(1)
 	}
 	//sign that key is updated
@@ -107,19 +98,16 @@ func (lbf *LruBloomFilter) testWithoutLock(key string, b []byte) bool {
 	lbf.checkCacheExistWithoutLock(key)
 
 	keyHash := lbf.keyHash(key)
-	if !lbf.cache.Contains(keyHash) {
-		return false
-	} else {
-		cacheResult, _ := lbf.cache.Get(keyHash)
-		bb := bytes.NewBufferString(cacheResult.(string))
 
-		bloomFilter := bloom.New(lbf.bloomFilterConfig.M, lbf.bloomFilterConfig.K)
-		if _, err := bloomFilter.ReadFrom(bb); err != nil {
-			panic(err)
-		}
-
-		return bloomFilter.Test(b)
+	var bb bytes.Buffer
+	if cacheResult, _ := lbf.cache.Get(keyHash); cacheResult != nil {
+		bb = *bytes.NewBuffer(cacheResult.([]byte))
 	}
+
+	bloomFilter := bloom.New(lbf.bloomFilterConfig.M, lbf.bloomFilterConfig.K)
+	_, _ = bloomFilter.ReadFrom(&bb)
+
+	return bloomFilter.Test(b)
 }
 
 func (lbf *LruBloomFilter) TestAndPut(key string, b []byte) bool {
@@ -136,6 +124,12 @@ func (lbf *LruBloomFilter) TestAndPut(key string, b []byte) bool {
 }
 
 func (lbf *LruBloomFilter) Close() {
+	//关闭之前 Flush 存盘
+	lbf.Flush()
+
+	lbf.mutex.Lock()
+	defer lbf.mutex.Unlock()
+
 	lbf.cache.Purge()
 	lbf.cache = nil
 	lbf.keyUseStatus = nil
@@ -146,23 +140,25 @@ func (lbf *LruBloomFilter) Close() {
 func (lbf *LruBloomFilter) initPersisterTick() {
 	if lbf.persister != nil && lbf.persistCheckEvery > 0 {
 		go lib.Every(lbf.persistCheckEvery, func(t time.Time) bool {
-
-			lbf.mutex.Lock()
-			defer lbf.mutex.Unlock()
-
-			for _, key := range lbf.cache.Keys() {
-				keyHash := key.(string)
-				_, ok := lbf.keyUseStatus[keyHash]
-				if ok {
-					if value, ok := lbf.cache.Get(key); ok {
-						go lbf.persister(key, value)
-					}
-				}
-				delete(lbf.keyUseStatus, keyHash)
-			}
-
+			lbf.Flush()
 			return !lbf.isClose
 		})
+	}
+}
+
+func (lbf *LruBloomFilter) Flush() {
+	lbf.mutex.Lock()
+	defer lbf.mutex.Unlock()
+
+	for _, key := range lbf.cache.Keys() {
+		keyHash := key.(string)
+		_, ok := lbf.keyUseStatus[keyHash]
+		if ok {
+			if value, ok := lbf.cache.Get(key); ok {
+				go lbf.persister(key, value)
+			}
+		}
+		delete(lbf.keyUseStatus, keyHash)
 	}
 }
 
